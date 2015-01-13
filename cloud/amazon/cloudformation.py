@@ -45,7 +45,8 @@ options:
   template:
     description:
       - The local path of the cloudformation template. This parameter is mutually exclusive with 'template_url'. Either one of them is required if "state" parameter is "present"
-        Must give full path to the file, relative to the working directory. If using roles this may look like "roles/cloudformation/files/cloudformation-example.json"
+        Must give full path to the file, relative to the working directory. If using roles this may look like "roles/cloudformation/files/cloudformation-example.json". This may
+        be jinja2 file with ex. name 'autoscaling.json.j2' - .j2 is required as a suffix
     required: false
     default: null
   notification_arns:
@@ -85,6 +86,12 @@ options:
     choices: [ json, yaml ]
     required: false
     version_added: "2.0"
+  j2_vars_file:
+    description:
+      - the path of the jinja2 variables file
+    required: false
+    default: null
+    aliases: []
 
 author: "James S. Martin (@jsmartin)"
 extends_documentation_fragment: aws
@@ -94,9 +101,9 @@ EXAMPLES = '''
 # Basic task example
 - name: launch ansible cloudformation example
   cloudformation:
-    stack_name: "ansible-cloudformation" 
+    stack_name: "ansible-cloudformation"
     state: "present"
-    region: "us-east-1" 
+    region: "us-east-1"
     disable_rollback: true
     template: "files/cloudformation-example.json"
     template_parameters:
@@ -110,9 +117,9 @@ EXAMPLES = '''
 # Basic role example
 - name: launch ansible cloudformation example
   cloudformation:
-    stack_name: "ansible-cloudformation" 
+    stack_name: "ansible-cloudformation"
     state: "present"
-    region: "us-east-1" 
+    region: "us-east-1"
     disable_rollback: true
     template: "roles/cloudformation/files/cloudformation-example.json"
     template_parameters:
@@ -149,6 +156,9 @@ import json
 import time
 import yaml
 
+from jinja2 import Template
+import yaml
+
 try:
     import boto
     import boto.cloudformation.connection
@@ -178,6 +188,7 @@ def boto_version_required(version_tuple):
     except:
         boto_version.append(-1)
     return tuple(boto_version) >= tuple(version_tuple)
+
 
 
 def stack_operation(cfn, stack_name, operation):
@@ -235,6 +246,14 @@ def invoke_with_throttling_retries(function_ref, *argv):
         time.sleep(5 * (2**retries))
         retries += 1
 
+def cfn_renderer(jinja_temp_fname,j2_vars):
+    with open(j2_vars) as vars_f:
+        config = yaml.load(vars_f)
+    template = Template(open(jinja_temp_fname).read())
+
+    return template.render(config)
+
+
 def main():
     argument_spec = ec2_argument_spec()
     argument_spec.update(dict(
@@ -244,6 +263,7 @@ def main():
             template=dict(default=None, required=False),
             notification_arns=dict(default=None, required=False),
             stack_policy=dict(default=None, required=False),
+            j2_vars_file=dict(default=None, required=False),
             disable_rollback=dict(default=False, type='bool'),
             template_url=dict(default=None, required=False),
             template_format=dict(default='json', choices=['json', 'yaml'], required=False),
@@ -269,7 +289,17 @@ def main():
             module.fail_json('Module parameter "template" or "template_url" is required if "state" is "present"')
 
     if module.params['template'] is not None:
-        template_body = open(module.params['template'], 'r').read()
+        # Lets create CFN template if jinja2 template is used in playbook
+        # otherwie just use CFN template as it is.
+        if module.params['template'].endswith(".j2"):
+            if module.params['j2_vars_file'] is not None:
+                template_body = cfn_renderer(module.params['template'],
+                                             module.params['j2_vars_file'])
+            else:
+                module.fail_json('With jinja2 temlates used as CFN templates you' +
+                                 'have to specify "j2_vars_file" module parameter')
+        else:
+            template_body = open(module.params['template'], 'r').read()
     else:
         template_body = None
 
