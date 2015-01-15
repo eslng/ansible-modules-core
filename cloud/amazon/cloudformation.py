@@ -92,6 +92,12 @@ options:
     required: false
     default: null
     aliases: []
+  j2_dump_json:
+    description:
+      - if true after jinja2 run will dump whole json template to stdout
+    required: false
+    default: null
+    aliases: []
 
 author: "James S. Martin (@jsmartin)"
 extends_documentation_fragment: aws
@@ -111,6 +117,8 @@ EXAMPLES = '''
       DiskType: "ephemeral"
       InstanceType: "m1.small"
       ClusterSize: 3
+      j2_vars_file: "../vars/env.yml"
+      j2_dump_json: true
     tags:
       Stack: "ansible-cloudformation"
 
@@ -264,6 +272,7 @@ def main():
             notification_arns=dict(default=None, required=False),
             stack_policy=dict(default=None, required=False),
             j2_vars_file=dict(default=None, required=False),
+            j2_dump_json=dict(default=False, required=False),
             disable_rollback=dict(default=False, type='bool'),
             template_url=dict(default=None, required=False),
             template_format=dict(default='json', choices=['json', 'yaml'], required=False),
